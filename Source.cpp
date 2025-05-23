@@ -1,9 +1,9 @@
 ﻿#pragma comment(linker,"\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
-#pragma comment(lib, "d2d1.lib")
-#pragma comment(lib, "d3d11.lib")
-#pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "windowscodecs.lib")
-#pragma comment(lib, "Dwrite.lib")
+#pragma comment(lib, "d2d1")
+#pragma comment(lib, "d3d11")
+#pragma comment(lib, "dxgi")
+#pragma comment(lib, "windowscodecs")
+#pragma comment(lib, "dwrite")
 
 #include <windows.h>
 #include <wrl/client.h>
@@ -12,7 +12,6 @@
 #include <wincodec.h>
 #include <documenttarget.h>
 #include <dwrite.h>
-#include <thread>
 
 using namespace Microsoft::WRL;
 
@@ -96,6 +95,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     switch (msg)
     {
     case WM_CREATE:
+        if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) {
+            MessageBox(hWnd, L"COM initialization failed", L"Error", MB_OK);
+            return -1;
+        }
         hButton = CreateWindow(TEXT("BUTTON"), TEXT("印刷"), WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, (HMENU)IDOK, ((LPCREATESTRUCT)lParam)->hInstance, 0);
         break;
 
@@ -104,102 +107,93 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_COMMAND:
-        if (LOWORD(wParam) == IDOK)
-        {
-            std::thread([hWnd] {
-                if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) {
-                    MessageBox(hWnd, L"COM initialization failed", L"Error", MB_OK);
-                    return;
-                }
-
-                ComPtr<ID3D11Device> d3dDevice;
-                ComPtr<ID3D11DeviceContext> d3dContext;
-                HRESULT hr = D3D11CreateDevice(
-                    nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                    nullptr, 0, D3D11_SDK_VERSION,
-                    &d3dDevice, nullptr, &d3dContext
-                );
-                if (FAILED(hr)) {
-                    MessageBox(hWnd, L"Failed to create D3D11 device", L"Error", MB_OK);
-                    CoUninitialize();
-                    return;
-                }
-
-                ComPtr<IDXGIDevice> dxgiDevice;
-                hr = d3dDevice.As(&dxgiDevice);
-                if (FAILED(hr)) {
-                    CoUninitialize();
-                    return;
-                }
-
-                ComPtr<ID2D1Factory1> d2dFactory;
-                D2D1_FACTORY_OPTIONS options = {};
-                options.debugLevel = D2D1_DEBUG_LEVEL_NONE;
-                hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1), &options, reinterpret_cast<void**>(d2dFactory.GetAddressOf()));
-                if (FAILED(hr)) {
-                    CoUninitialize();
-                    return;
-                }
-
-                ComPtr<ID2D1Device> d2dDevice;
-                ComPtr<ID2D1DeviceContext> d2dContext;
-                hr = d2dFactory->CreateDevice(dxgiDevice.Get(), &d2dDevice);
-                if (FAILED(hr)) {
-                    CoUninitialize();
-                    return;
-                }
-
-                hr = d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &d2dContext);
-                if (FAILED(hr)) {
-                    CoUninitialize();
-                    return;
-                }
-
-                ComPtr<IWICImagingFactory> wicFactory;
-                hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wicFactory));
-                if (FAILED(hr)) {
-                    CoUninitialize();
-                    return;
-                }
-
-                ComPtr<IDWriteFactory> dwriteFactory;
-                ComPtr<IDWriteTextFormat> textFormat;
-                hr = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(dwriteFactory.GetAddressOf()));
-                if (FAILED(hr)) {
-                    CoUninitialize();
-                    return;
-                }
-
-                hr = dwriteFactory->CreateTextFormat(
-                    L"Yu Gothic",
-                    nullptr,
-                    DWRITE_FONT_WEIGHT_NORMAL,
-                    DWRITE_FONT_STYLE_NORMAL,
-                    DWRITE_FONT_STRETCH_NORMAL,
-                    24.0f,
-                    L"ja-jp",
-                    &textFormat
-                );
-                if (FAILED(hr)) {
-                    CoUninitialize();
-                    return;
-                }
-
-                LPCWSTR printerName = L"Microsoft Print to PDF";
-                hr = PrintWithDirect2D(d2dContext.Get(), d2dDevice.Get(), wicFactory.Get(), textFormat.Get(), printerName);
-                if (FAILED(hr)) {
-                    MessageBox(hWnd, L"Print failed", L"Error", MB_OK);
-                }
-                else {
-                    MessageBox(hWnd, L"Print completed successfully", L"Info", MB_OK);
-                }
-
+        if (LOWORD(wParam) == IDOK) {
+            ComPtr<ID3D11Device> d3dDevice;
+            ComPtr<ID3D11DeviceContext> d3dContext;
+            HRESULT hr = D3D11CreateDevice(
+                nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                nullptr, 0, D3D11_SDK_VERSION,
+                &d3dDevice, nullptr, &d3dContext
+            );
+            if (FAILED(hr)) {
+                MessageBox(hWnd, L"Failed to create D3D11 device", L"Error", MB_OK);
                 CoUninitialize();
-                }).detach();
+                return 0;
+            }
+
+            ComPtr<IDXGIDevice> dxgiDevice;
+            hr = d3dDevice.As(&dxgiDevice);
+            if (FAILED(hr)) {
+                CoUninitialize();
+                return 0;
+            }
+
+            ComPtr<ID2D1Factory1> d2dFactory;
+            D2D1_FACTORY_OPTIONS options = {};
+            options.debugLevel = D2D1_DEBUG_LEVEL_NONE;
+            hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1), &options, reinterpret_cast<void**>(d2dFactory.GetAddressOf()));
+            if (FAILED(hr)) {
+                CoUninitialize();
+                return 0;
+            }
+
+            ComPtr<ID2D1Device> d2dDevice;
+            ComPtr<ID2D1DeviceContext> d2dContext;
+            hr = d2dFactory->CreateDevice(dxgiDevice.Get(), &d2dDevice);
+            if (FAILED(hr)) {
+                CoUninitialize();
+                return 0;
+            }
+
+            hr = d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &d2dContext);
+            if (FAILED(hr)) {
+                CoUninitialize();
+                return 0;
+            }
+
+            ComPtr<IWICImagingFactory> wicFactory;
+            hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wicFactory));
+            if (FAILED(hr)) {
+                CoUninitialize();
+                return 0;
+            }
+
+            ComPtr<IDWriteFactory> dwriteFactory;
+            ComPtr<IDWriteTextFormat> textFormat;
+            hr = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(dwriteFactory.GetAddressOf()));
+            if (FAILED(hr)) {
+                CoUninitialize();
+                return 0;
+            }
+
+            hr = dwriteFactory->CreateTextFormat(
+                L"Yu Gothic",
+                nullptr,
+                DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                24.0f,
+                L"ja-jp",
+                &textFormat
+            );
+            if (FAILED(hr)) {
+                CoUninitialize();
+                return 0;
+            }
+
+            LPCWSTR printerName = L"Microsoft Print to PDF";
+            hr = PrintWithDirect2D(d2dContext.Get(), d2dDevice.Get(), wicFactory.Get(), textFormat.Get(), printerName);
+            if (FAILED(hr)) {
+                MessageBox(hWnd, L"Print failed", L"Error", MB_OK);
+            }
+            else {
+                MessageBox(hWnd, L"Print completed successfully", L"Info", MB_OK);
+            }
         }
         break;
 
     case WM_DESTROY:
+        CoUninitialize();
         PostQuitMessage(0);
         break;
 
@@ -209,7 +203,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow)
+int WINAPI wWinMain(
+    _In_ HINSTANCE hInstance,
+    _In_opt_ HINSTANCE,
+    _In_ LPWSTR,
+    _In_ int nShowCmd)
 {
     MSG msg;
     WNDCLASS wndclass = {
